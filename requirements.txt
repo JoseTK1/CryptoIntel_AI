@@ -5,3 +5,4 @@ stripe
 openai
 python-dotenv
 fpdf
+python-multipart
