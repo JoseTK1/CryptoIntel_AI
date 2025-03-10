@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CryptoIntel AI - Research Reports</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            margin: 50px;
+            background-color: #f8f9fa;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.1);
+            display: inline-block;
+            text-align: left;
+            max-width: 400px;
+        }
+        input[type="text"], input[type="email"], select {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+        button {
+            width: 100%;
+            padding: 10px;
+            font-size: 16px;
+            background-color: #008CBA;
+            color: white;
+            border: none;
+            cursor: pointer;
+            border-radius: 5px;
+        }
+        button:hover {
+            background-color: #005f73;
+        }
+        .note {
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>CryptoIntel AI</h1>
+    <p>Get AI-generated research on any cryptocurrency topic.</p>
+
+    <div class="container">
+        <form action="https://your-backend.onrender.com/submit-query" method="post">
+            <label for="research_query">Enter Your Research Topic:</label><br>
+            <input type="text" name="research_query" placeholder="e.g., Future of Bitcoin ETFs" required>
+
+            <label for="report_type">Select Report Type:</label>
+            <select name="report_type" id="report_type" onchange="toggleEmailField()">
+                <option value="free">Free Report - Limited Summary</option>
+                <option value="basic">Basic Report ($29) - Summary of key trends</option>
+                <option value="deep">Deep Research Report ($99) - Comprehensive market analysis</option>
+            </select>
+
+            <label for="custom_options">Select Additional Insights:</label><br>
+            <input type="checkbox" name="custom_options" value="technical_analysis"> Technical Analysis<br>
+            <input type="checkbox" name="custom_options" value="investment_risks"> Investment Risks<br>
+            <input type="checkbox" name="custom_options" value="long_term_forecast"> Long-Term Forecast<br>
+
+            <div id="emailField">
+                <label for="email">Enter your email (required for free reports):</label><br>
+                <input type="email" name="email" id="email" placeholder="your@email.com">
+                <p class="note">Your report will be emailed to you.</p>
+            </div>
+
+            <button type="submit">Get Research Report</button>
+        </form>
+    </div>
+
+    <script>
+        function toggleEmailField() {
+            var reportType = document.getElementById("report_type").value;
+            var emailField = document.getElementById("emailField");
+
+            if (reportType === "free") {
+                emailField.style.display = "block";
+                document.getElementById("email").setAttribute("required", "required");
+            } else {
+                emailField.style.display = "none";
+                document.getElementById("email").removeAttribute("required");
+            }
+        }
+
+        // Ensure correct field display on page load
+        window.onload = toggleEmailField;
+    </script>
+
+</body>
+</html>
