@@ -1,5 +1,6 @@
-from fastapi import FastAPI, Request, Form, HTTPException
+from fastapi import FastAPI, Request, HTTPException, Form, Depends
 from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.middleware.cors import CORSMiddleware  # CORS Fix
 import stripe
 import os
 import smtplib
@@ -11,7 +12,21 @@ import requests
 
 app = FastAPI()
 
-# Load environment variables
+# ✅ Enable CORS for Frontend Communication
+origins = [
+    "http://localhost:3000",  # Local development
+    "https://your-frontend.vercel.app",  # Deployed frontend
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# ✅ Load environment variables
 load_dotenv()
 stripe.api_key = os.getenv("STRIPE_API_KEY")
 openai.api_key = os.getenv("OPENAI_API_KEY")
@@ -19,7 +34,7 @@ EMAIL_ADDRESS = 'cryptointelai@gmail.com'
 EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
 
-### **🔹 Email Sending Function (Fixed)**
+# ✅ Email Sending Function
 def send_email(to_email: str, report_file: str):
     """Send the research report via email."""
     if not os.path.exists(report_file):
@@ -40,8 +55,7 @@ def send_email(to_email: str, report_file: str):
         smtp.send_message(msg)
         print(f"✅ Report sent successfully to {to_email}")
 
-
-### **🔹 AI Research Report Generation**
+# ✅ AI Research Report Generation
 def generate_research_report(query: str, report_type: str) -> str:
     """Generate an AI-powered research report based on user query."""
     
@@ -55,8 +69,7 @@ def generate_research_report(query: str, report_type: str) -> str:
 
     return response["choices"][0]["message"]["content"]
 
-
-### **🔹 Save Report as PDF**
+# ✅ Save Report as PDF
 def save_report_as_pdf(content: str, filename: str):
     """Convert text content into a PDF report."""
     os.makedirs(os.path.dirname(filename), exist_ok=True)
@@ -66,25 +79,30 @@ def save_report_as_pdf(content: str, filename: str):
     pdf.multi_cell(190, 10, content)
     pdf.output(filename)
 
-
-### **🔹 Homepage Route**
+# ✅ Homepage Route (Health Check)
 @app.get("/")
 async def home():
     """Homepage"""
     return {"message": "CryptoIntel AI is live! Use the API to generate research reports."}
 
-
-### **🔹 Process User Query & Redirect to Stripe**
+# ✅ Process User Query & Redirect to Stripe (Updated for JSON Data)
 @app.post("/submit-query")
-async def submit_query(research_query: str = Form(...), report_type: str = Form("basic")):
+async def submit_query(request: Request):
     """Process user's research request and redirect to Stripe Checkout."""
-    if not research_query:
-        raise HTTPException(status_code=400, detail="No research query submitted")
+    try:
+        data = await request.json()
+        research_query = data.get("research_query")
+        report_type = data.get("report_type", "basic")
+
+        if not research_query:
+            raise HTTPException(status_code=400, detail="No research query submitted")
+
+        return RedirectResponse(url=f"/buy-report?query={research_query}&report_type={report_type}", status_code=303)
     
-    return RedirectResponse(url=f"/buy-report?query={research_query}&report_type={report_type}", status_code=303)
+    except Exception as e:
+        return JSONResponse(content={"error": str(e)}, status_code=500)
 
-
-### **🔹 Stripe Payment Checkout**
+# ✅ Stripe Payment Checkout (Updated Success URL)
 @app.get("/buy-report")
 async def buy_report(query: str, report_type: str):
     """Initiate Stripe checkout session."""
@@ -95,23 +113,21 @@ async def buy_report(query: str, report_type: str):
             payment_method_types=['card'],
             line_items=[{'price': price_id, 'quantity': 1}],
             mode='payment',
-            success_url='https://yourwebsite.com/success',
-            cancel_url='https://yourwebsite.com/cancel',
+            success_url="https://your-frontend.vercel.app/success",
+            cancel_url="https://your-frontend.vercel.app/cancel",
             metadata={"query": query, "report_type": report_type}
         )
         return JSONResponse(content={"url": checkout_session.url})
     except Exception as e:
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
-
-### **🔹 Success Page**
+# ✅ Success Page
 @app.get("/success")
 async def success():
     """Show success message after payment."""
     return {"message": "Payment successful! Your research report will be emailed shortly."}
 
-
-### **🔹 Stripe Webhook Handler**
+# ✅ Stripe Webhook Handler
 @app.post("/webhook")
 async def stripe_webhook(request: Request):
     """Handle Stripe webhook events and generate the research report after payment."""
@@ -142,8 +158,7 @@ async def stripe_webhook(request: Request):
 
     return JSONResponse(content={}, status_code=200)  # Stripe requires 200 OK
 
-
-### **🔹 Run the FastAPI App**
+# ✅ Run the FastAPI App
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=10000)

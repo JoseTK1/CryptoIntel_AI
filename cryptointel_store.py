@@ -10,17 +10,20 @@ import requests
 
 app = Flask(__name__)
 
-# Load environment variables from .env
+# Load environment variables (if running locally, not needed on Render)
 load_dotenv()
+
+# Securely fetch API keys from environment variables
 stripe.api_key = os.getenv("STRIPE_API_KEY")
 openai.api_key = os.getenv("OPENAI_API_KEY")
+news_api_key = os.getenv("NEWS_API_KEY")  # ✅ NewsAPI key added
 
 # Email Configuration
 EMAIL_ADDRESS = 'cryptointelai@gmail.com'
 EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
 
 
-### **🔹 STEP 1: Email Sending Function (Fixed)**
+### **🔹 Email Sending Function (Fixed)**
 def send_email(to_email, report_file, report_type):
     """Send the research report via email."""
     if not os.path.exists(report_file):
@@ -46,7 +49,7 @@ def send_email(to_email, report_file, report_type):
         print(f"❌ Email sending failed: {e}")
 
 
-### **🔹 STEP 2: Fetching Market Data & News**
+### **🔹 Fetching Market Data & News**
 def fetch_crypto_data():
     """Fetch real-time market data for Bitcoin & Ethereum."""
     url = "https://api.coingecko.com/api/v3/simple/price"
@@ -63,13 +66,16 @@ def fetch_crypto_data():
 
 
 def fetch_crypto_news():
-    """Fetch the latest cryptocurrency news."""
+    """Fetch the latest cryptocurrency news using NewsAPI."""
+    if not news_api_key:
+        return "⚠️ No NewsAPI key found. Please add it to the environment variables."
+
     url = "https://newsapi.org/v2/everything"
     params = {
         "q": "cryptocurrency OR bitcoin OR ethereum",
         "sortBy": "publishedAt",
         "language": "en",
-        "apiKey": "your_newsapi_key_here"
+        "apiKey": news_api_key  # ✅ Uses secure API key
     }
     response = requests.get(url, params=params)
     if response.status_code == 200:
@@ -87,7 +93,7 @@ def fetch_expert_opinions():
     """  # Placeholder (Replace with API integration)
 
 
-### **🔹 STEP 3: AI Research Customization & Token Increase**
+### **🔹 AI Research Customization & Token Increase**
 def generate_research_report(query, report_type, custom_options=[]):
     """Generate an AI-powered research report with real-time news & user customization."""
     
@@ -143,59 +149,7 @@ def generate_research_report(query, report_type, custom_options=[]):
     return response["choices"][0]["message"]["content"]
 
 
-### **🔹 STEP 4: Handling User Requests & Payments**
-@app.route('/')
-def home():
-    return render_template('index.html')
-
-
-@app.route('/submit-query', methods=['POST'])
-def submit_query():
-    """Process user research request & determine if free or paid."""
-    research_query = request.form.get("research_query")
-    report_type = request.form.get("report_type", "basic")
-    user_email = request.form.get("email")
-    custom_options = request.form.getlist("custom_options")  # Capture selected options
-
-    if not research_query:
-        return "Error: No research query submitted", 400
-
-    if report_type == "free":
-        research_content = generate_research_report(research_query, "free", custom_options)
-        report_filename = f"reports/{research_query.replace(' ', '_')}_free.pdf"
-        save_report_as_pdf(research_content, report_filename)
-
-        if user_email:
-            send_email(user_email, report_filename, "free")
-
-        return send_file(report_filename, as_attachment=True)
-
-    return redirect(url_for('buy_report', query=research_query, report_type=report_type, custom_options=",".join(custom_options)))
-
-
-@app.route('/buy-report', methods=['GET'])
-def buy_report():
-    research_query = request.args.get("query", "General Crypto Research")
-    report_type = request.args.get("report_type", "basic")
-    custom_options = request.args.get("custom_options", "").split(",")
-
-    price_id = "price_1R0swNBi8IpwzM1aDEEPRESEARCH99" if report_type == "deep" else "price_1R0swNBi8IpwzM1aBASICREPORT29"
-
-    try:
-        checkout_session = stripe.checkout.Session.create(
-            payment_method_types=['card'],
-            line_items=[{'price': price_id, 'quantity': 1}],
-            mode='payment',
-            success_url='https://yourwebsite.com/success',
-            cancel_url='https://yourwebsite.com/cancel',
-            metadata={"query": research_query, "report_type": report_type, "custom_options": ",".join(custom_options)}
-        )
-        return jsonify({'url': checkout_session.url})
-    except Exception as e:
-        return jsonify(error=str(e)), 500
-
-
-### **🔹 STEP 5: Generating the PDF Reports**
+### **🔹 Generate & Deliver Reports**
 def save_report_as_pdf(content, filename):
     """Convert text content into a PDF report and ensure directory exists."""
     os.makedirs(os.path.dirname(filename), exist_ok=True)
@@ -210,5 +164,6 @@ def save_report_as_pdf(content, filename):
     pdf.output(filename, 'F')
 
 
+### **🔹 Run the Flask App**
 if __name__ == '__main__':
     app.run(debug=True)
