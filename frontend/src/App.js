@@ -2,8 +2,7 @@ import React, { useState } from "react";
 import "./App.css";
 
 // 🔥 Update API Base URL to Railway backend (NO TRAILING SLASH)
-const API_BASE_URL = "const API_BASE_URL = "https://cryptointelai-production.up.railway.app/"; // ✅ Correct Railway URL
-";  // ✅ Update this
+const API_BASE_URL = "https://cryptointelai-production.up.railway.app"; // ✅ Corrected Railway URL
 
 function App() {
   const [query, setQuery] = useState("");
@@ -12,39 +11,36 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [responseMessage, setResponseMessage] = useState("");
 
-  // ✅ Test Connection to Backend
-  const testBackendConnection = async () => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/test`);
-      const result = await response.json();
-      alert(`✅ Backend Response: ${result.message}`);
-    } catch (error) {
-      alert(`❌ Backend Connection Failed: ${error.message}`);
-    }
-  };
-
   // 🔹 Function to send API request
   const handleSubmit = async (event) => {
     event.preventDefault();
     setLoading(true);
-    setResponseMessage("");
+    setResponseMessage(""); // Reset message
 
     const requestBody = {
       research_query: query,
       report_type: reportType,
-      email: reportType === "free" ? email : undefined,
+      email: reportType === "free" ? email : undefined, // Only send email for free reports
     };
 
     try {
       const response = await fetch(`${API_BASE_URL}/submit-query`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify(requestBody),
       });
 
       const result = await response.json();
+
       if (response.ok) {
-        setResponseMessage(`✅ Request received: ${JSON.stringify(result)}`);
+        if (reportType === "free") {
+          setResponseMessage("✅ Free report request submitted! Check your email.");
+        } else {
+          // Redirect to Stripe payment
+          window.location.href = result.url;
+        }
       } else {
         setResponseMessage(`❌ Error: ${result.detail || "Something went wrong"}`);
       }
@@ -61,20 +57,22 @@ function App() {
         <h1>CryptoIntel AI</h1>
         <p>Get AI-generated research on any cryptocurrency topic.</p>
 
-        {/* ✅ New Button to Test Backend Connection */}
-        <button onClick={testBackendConnection}>Test Backend Connection</button>
-
         <form onSubmit={handleSubmit}>
           <label>
             Enter Your Research Topic:
-            <input type="text" value={query} onChange={(e) => setQuery(e.target.value)} required />
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              required
+            />
           </label>
 
           <label>
             Select Report Type:
             <select value={reportType} onChange={(e) => setReportType(e.target.value)}>
               <option value="free">Free Report</option>
-              <option value="basic">Advanced Research Report ($29)</option>
+              <option value="advanced">Advanced Research Report ($29)</option>
               <option value="deep">Deep Research Report ($99)</option>
             </select>
           </label>
@@ -82,7 +80,12 @@ function App() {
           {reportType === "free" && (
             <label>
               Enter Your Email (Required for Free Reports):
-              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+              />
             </label>
           )}
 
