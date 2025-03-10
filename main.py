@@ -1,6 +1,6 @@
 from fastapi import FastAPI, Request, HTTPException, Form, Depends
 from fastapi.responses import JSONResponse, RedirectResponse
-from fastapi.middleware.cors import CORSMiddleware  # CORS Fix
+from fastapi.middleware.cors import CORSMiddleware
 import stripe
 import os
 import smtplib
@@ -33,6 +33,22 @@ openai.api_key = os.getenv("OPENAI_API_KEY")
 EMAIL_ADDRESS = 'cryptointelai@gmail.com'
 EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
+
+# ✅ Stripe Product IDs (Replace with correct IDs)
+PRODUCT_IDS = {
+    "deep": "prod_Rv4UrWt9lFcXxz",  # Deep Research
+    "basic": "prod_Rv4SPDlhX6Ccbu",  # Advanced Research
+}
+
+# ✅ Get Price IDs dynamically from Stripe
+def get_price_id(product_id):
+    try:
+        prices = stripe.Price.list(product=product_id)
+        if prices and prices["data"]:
+            return prices["data"][0]["id"]  # Get first price ID
+    except Exception as e:
+        print(f"❌ Stripe Error: {e}")
+    return None  # Return None if no price found
 
 # ✅ Email Sending Function
 def send_email(to_email: str, report_file: str):
@@ -102,13 +118,18 @@ async def submit_query(request: Request):
     except Exception as e:
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
-# ✅ Stripe Payment Checkout (Updated Success URL)
+# ✅ Stripe Payment Checkout (Updated with Dynamic Price IDs)
 @app.get("/buy-report")
 async def buy_report(query: str, report_type: str):
     """Initiate Stripe checkout session."""
-    price_id = "price_1R0swNBi8IpwzM1aDEEPRESEARCH99" if report_type == "deep" else "price_1R0swNBi8IpwzM1aBASICREPORT29"
-
     try:
+        # Get the correct price ID dynamically
+        product_id = PRODUCT_IDS.get(report_type, "basic")  # Default to basic if invalid type
+        price_id = get_price_id(product_id)
+
+        if not price_id:
+            raise HTTPException(status_code=500, detail="Stripe Price ID not found")
+
         checkout_session = stripe.checkout.Session.create(
             payment_method_types=['card'],
             line_items=[{'price': price_id, 'quantity': 1}],
@@ -118,7 +139,9 @@ async def buy_report(query: str, report_type: str):
             metadata={"query": query, "report_type": report_type}
         )
         return JSONResponse(content={"url": checkout_session.url})
+
     except Exception as e:
+        print("❌ ERROR in /buy-report:", str(e))  # ✅ Log error
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
 # ✅ Success Page
