@@ -1,8 +1,8 @@
 import React, { useState } from "react";
 import "./App.css";
 
-// 🔥 Update API Base URL to Railway backend (NO TRAILING SLASH)
-const API_BASE_URL = "https://cryptointelai-production.up.railway.app"; // ✅ Corrected Railway URL
+// 🔥 Correct API Base URL (NO TRAILING SLASH)
+const API_BASE_URL = "https://cryptointelai-production.up.railway.app"; // ✅ Fixed URL
 
 function App() {
   const [query, setQuery] = useState("");
@@ -20,8 +20,12 @@ function App() {
     const requestBody = {
       research_query: query,
       report_type: reportType,
-      email: reportType === "free" ? email : undefined, // Only send email for free reports
     };
+
+    // ✅ Only include email for free reports
+    if (reportType === "free") {
+      requestBody.email = email;
+    }
 
     try {
       const response = await fetch(`${API_BASE_URL}/submit-query`, {
@@ -37,9 +41,11 @@ function App() {
       if (response.ok) {
         if (reportType === "free") {
           setResponseMessage("✅ Free report request submitted! Check your email.");
-        } else {
-          // Redirect to Stripe payment
+        } else if (result.url) {
+          // ✅ Redirect to Stripe payment page
           window.location.href = result.url;
+        } else {
+          setResponseMessage("⚠️ Unexpected response. Please try again.");
         }
       } else {
         setResponseMessage(`❌ Error: ${result.detail || "Something went wrong"}`);
