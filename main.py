@@ -1,27 +1,26 @@
-from flask import Flask, render_template, request, jsonify, redirect, url_for
+from fastapi import FastAPI, Request, Form, HTTPException
+from fastapi.responses import JSONResponse, RedirectResponse
 import stripe
 import os
 import smtplib
 from email.message import EmailMessage
 from dotenv import load_dotenv
 from fpdf import FPDF
-import openai  # Ensure you have access to OpenAI API
+import openai
+import requests
 
-app = Flask(__name__)
+app = FastAPI()
 
-# Load environment variables from .env
+# Load environment variables
 load_dotenv()
 stripe.api_key = os.getenv("STRIPE_API_KEY")
-
-# Email Configuration
+openai.api_key = os.getenv("OPENAI_API_KEY")
 EMAIL_ADDRESS = 'cryptointelai@gmail.com'
 EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
+STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
 
-# OpenAI API Key
-openai.api_key = os.getenv("OPENAI_API_KEY")
-
-
-def send_email(to_email, report_file):
+### **🔹 Email Sending Function (Fixed)**
+def send_email(to_email: str, report_file: str):
     """Send the research report via email."""
     if not os.path.exists(report_file):
         print(f"ERROR: Report file '{report_file}' not found. Email not sent.")
@@ -39,15 +38,14 @@ def send_email(to_email, report_file):
     with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
         smtp.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
         smtp.send_message(msg)
+        print(f"✅ Report sent successfully to {to_email}")
 
 
-def generate_research_report(query, report_type):
+### **🔹 AI Research Report Generation**
+def generate_research_report(query: str, report_type: str) -> str:
     """Generate an AI-powered research report based on user query."""
     
-    if report_type == "deep":
-        prompt = f"Provide a deep research report on {query}. Include market trends, expert insights, technical analysis, investment risks, and future forecasts."
-    else:
-        prompt = f"Provide a brief summary of {query} including key trends, risks, and opportunities in crypto."
+    prompt = f"Provide a {'deep' if report_type == 'deep' else 'brief'} research report on {query}. Include market trends, expert insights, technical analysis, investment risks, and future forecasts."
 
     response = openai.ChatCompletion.create(
         model="gpt-4",
@@ -58,8 +56,10 @@ def generate_research_report(query, report_type):
     return response["choices"][0]["message"]["content"]
 
 
-def save_report_as_pdf(content, filename):
+### **🔹 Save Report as PDF**
+def save_report_as_pdf(content: str, filename: str):
     """Convert text content into a PDF report."""
+    os.makedirs(os.path.dirname(filename), exist_ok=True)
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("Arial", size=12)
@@ -67,82 +67,67 @@ def save_report_as_pdf(content, filename):
     pdf.output(filename)
 
 
-@app.route('/')
-def home():
-    """Render the homepage with research query form."""
-    return render_template('index.html')
+### **🔹 Homepage Route**
+@app.get("/")
+async def home():
+    """Homepage"""
+    return {"message": "CryptoIntel AI is live! Use the API to generate research reports."}
 
 
-@app.route('/submit-query', methods=['POST'])
-def submit_query():
+### **🔹 Process User Query & Redirect to Stripe**
+@app.post("/submit-query")
+async def submit_query(research_query: str = Form(...), report_type: str = Form("basic")):
     """Process user's research request and redirect to Stripe Checkout."""
-    research_query = request.form.get("research_query")
-    report_type = request.form.get("report_type", "basic")  # Default to basic
-
     if not research_query:
-        return "Error: No research query submitted", 400
+        raise HTTPException(status_code=400, detail="No research query submitted")
+    
+    return RedirectResponse(url=f"/buy-report?query={research_query}&report_type={report_type}", status_code=303)
 
-    # Redirect to payment
-    return redirect(url_for('buy_report', query=research_query, report_type=report_type))
 
-
-@app.route('/buy-report', methods=['GET'])
-def buy_report():
-    """Initiate Stripe checkout based on report type selection."""
-    research_query = request.args.get("query", "General Crypto Research")
-    report_type = request.args.get("report_type", "basic")
-
-    # Set price based on report type
-    if report_type == "deep":
-        price_id = "price_1R0swNBi8IpwzM1aDEEPRESEARCH99"  # Replace with actual Stripe price ID
-    else:
-        price_id = "price_1R0swNBi8IpwzM1aBASICREPORT29"  # Replace with actual Stripe price ID
+### **🔹 Stripe Payment Checkout**
+@app.get("/buy-report")
+async def buy_report(query: str, report_type: str):
+    """Initiate Stripe checkout session."""
+    price_id = "price_1R0swNBi8IpwzM1aDEEPRESEARCH99" if report_type == "deep" else "price_1R0swNBi8IpwzM1aBASICREPORT29"
 
     try:
         checkout_session = stripe.checkout.Session.create(
             payment_method_types=['card'],
-            line_items=[{
-                'price': price_id,
-                'quantity': 1,
-            }],
+            line_items=[{'price': price_id, 'quantity': 1}],
             mode='payment',
             success_url='https://yourwebsite.com/success',
             cancel_url='https://yourwebsite.com/cancel',
-            metadata={"query": research_query, "report_type": report_type}
+            metadata={"query": query, "report_type": report_type}
         )
-        return jsonify({'url': checkout_session.url})
+        return JSONResponse(content={"url": checkout_session.url})
     except Exception as e:
-        return jsonify(error=str(e)), 500
+        return JSONResponse(content={"error": str(e)}, status_code=500)
 
 
-@app.route('/success')
-def success():
+### **🔹 Success Page**
+@app.get("/success")
+async def success():
     """Show success message after payment."""
-    return 'Payment successful! Your custom research report will be emailed shortly.'
+    return {"message": "Payment successful! Your research report will be emailed shortly."}
 
 
-@app.route('/webhook', methods=['POST'])
-def stripe_webhook():
+### **🔹 Stripe Webhook Handler**
+@app.post("/webhook")
+async def stripe_webhook(request: Request):
     """Handle Stripe webhook events and generate the research report after payment."""
-    payload = request.get_data(as_text=True)
-    sig_header = request.headers.get('Stripe-Signature')
-    endpoint_secret = os.getenv("STRIPE_WEBHOOK_SECRET")
+    payload = await request.body()
+    sig_header = request.headers.get("Stripe-Signature")
 
     try:
-        event = stripe.Webhook.construct_event(payload, sig_header, endpoint_secret)
-    except ValueError as e:
-        return 'Invalid payload', 400
-    except stripe.error.SignatureVerificationError as e:
-        return 'Invalid signature', 400
+        event = stripe.Webhook.construct_event(payload, sig_header, STRIPE_WEBHOOK_SECRET)
+    except (ValueError, stripe.error.SignatureVerificationError):
+        raise HTTPException(status_code=400, detail="Invalid payload or signature")
 
-    if event['type'] == 'checkout.session.completed':
-        session = event['data']['object']
-        customer_email = session.get('customer_email', None)
-        if not customer_email:
-            customer_email = session.get('customer_details', {}).get('email', None)
-
-        research_query = session.get('metadata', {}).get('query', "General Crypto Research")
-        report_type = session.get('metadata', {}).get('report_type', "basic")
+    if event["type"] == "checkout.session.completed":
+        session = event["data"]["object"]
+        customer_email = session.get("customer_email", session.get("customer_details", {}).get("email"))
+        research_query = session["metadata"].get("query", "General Crypto Research")
+        report_type = session["metadata"].get("report_type", "basic")
 
         if customer_email:
             # Generate AI Research Report
@@ -155,8 +140,10 @@ def stripe_webhook():
             # Send Report via Email
             send_email(customer_email, report_filename)
 
-    return '', 200  # Return 200 OK so Stripe knows the webhook was received
+    return JSONResponse(content={}, status_code=200)  # Stripe requires 200 OK
 
 
-if __name__ == '__main__':
-    app.run(debug=True)
+### **🔹 Run the FastAPI App**
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=10000)
