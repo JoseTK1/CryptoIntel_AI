@@ -1,0 +1,6 @@
+fastapi
+uvicorn
+requests
+stripe
+openai
+python-dotenv
